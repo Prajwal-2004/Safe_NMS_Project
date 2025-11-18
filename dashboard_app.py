@@ -13,7 +13,6 @@ st.markdown("---")
 # Load Data
 try:
     train_df = pd.read_csv('train_data.csv')
-    # Load a fresh copy of live data since the simulation loop modifies it
     live_df_raw = pd.read_csv('live_data.csv') 
 except FileNotFoundError:
     st.error("Error: Please run `python data_gen.py` first in the terminal.")
@@ -30,8 +29,6 @@ st.success("AI Model Trained. Ready for Simulation.")
 # --- 2. RUN FULL SIMULATION LOOP (Generate data for the full graph) ---
 results_latency = []
 log_history = [] 
-
-# We run the simulation on a copy of the raw data to see the effects
 live_df_sim = live_df_raw.copy()
 
 for index, row in live_df_sim.iterrows():
@@ -39,10 +36,8 @@ for index, row in live_df_sim.iterrows():
     prediction_id = clf.predict(current_metrics)[0]
     row_dict = row.to_dict()
     
-    # Hybrid Safety Check
     final_action, explanation = check_safety(prediction_id, row_dict)
     
-    # Store data for plotting
     results_latency.append(row['Latency'])
     log_history.append({
         'index': index, 
@@ -58,7 +53,7 @@ for index, row in live_df_sim.iterrows():
              live_df_sim.at[index+1, 'Latency'] = max(20, live_df_sim.at[index+1, 'Latency'] * 0.2)
              live_df_sim.at[index+1, 'CPU_Load'] = max(25, live_df_sim.at[index+1, 'CPU_Load'] * 0.5)
 
-# --- 3. INTERACTIVE SLIDER & ANNOTATION ---
+# --- 3. INTERACTIVE SLIDER & SELECTION ---
 
 max_minutes = len(log_history) - 1
 minute_to_check = st.slider(
@@ -69,22 +64,27 @@ minute_to_check = st.slider(
 selected_log = log_history[minute_to_check]
 is_blocked = "[GUARDRAIL TRIGGERED]" in selected_log['reason']
 
-# --- 4. EXPLAINABLE METRICS & DECISION ---
+# --- 4. EXPLAINABLE METRICS & DECISION (Updated to show all four metrics) ---
 st.markdown("---")
-st.subheader(f"Decision and Metrics at T+{minute_to_check} min")
+st.subheader(f"Decision Inputs and Final Action at T+{minute_to_check} min")
 
-col1, col2, col3, col4 = st.columns(4)
+# Use 5 columns: 4 for the input metrics + 1 for the final action status
+col1, col2, col3, col4, col5 = st.columns(5)
 
+# Display all four input metrics
 col1.metric("Latency (ms)", f"{int(selected_log['metrics']['Latency'])}")
-col2.metric("Active Users", f"{int(selected_log['metrics']['Active_Users'])}")
-col3.metric("Action Taken", selected_log['action'])
+col2.metric("CPU Load (%)", f"{int(selected_log['metrics']['CPU_Load'])}")
+col3.metric("Packet Loss (%)", f"{selected_log['metrics']['Packet_Loss']:.2f}") # Displaying floats for packet loss
+col4.metric("Active Users", f"{int(selected_log['metrics']['Active_Users'])}")
+col5.metric("Action Taken", selected_log['action'])
 
-# Highlight the final outcome based on the safety system
+# Display the safety status and rationale
+st.markdown("---")
 if is_blocked:
-    col4.markdown("<h3 style='color: red;'>⚠️ Override Applied</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: red;'>⚠️ Safety Status: Override Applied</h3>", unsafe_allow_html=True)
     st.warning(f"**Safety Rationale:** {selected_log['reason']}")
 else:
-    col4.markdown("<h3 style='color: green;'>✅ Action Approved</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color: green;'>✅ Safety Status: Action Approved</h3>", unsafe_allow_html=True)
     st.success(f"**Decision Rationale:** {selected_log['reason']}")
 
 st.markdown("---")
@@ -136,7 +136,7 @@ ax.set_xlabel("Time (minutes)", fontsize=12)
 ax.set_ylabel("Latency (ms)", fontsize=12)
 ax.grid(True, linestyle='--', alpha=0.6)
 
-# Custom legend for the intervention markers
+# Custom legend
 custom_lines = [
     Line2D([0], [0], color='blue', lw=2, label='Observed Latency'),
     Line2D([0], [0], color='purple', linestyle='--', label='Selected Time Point'),
