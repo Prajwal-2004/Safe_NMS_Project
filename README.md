@@ -38,6 +38,6 @@ You must install all necessary Python libraries listed in `requirements.txt`.
 # Ensure you are in the Safe_NMS_Project folder
 pip install -r requirements.txt
 
-
 Step 1: python data_gen.py
-Step 2: python -m streamlit run interactive_dashboard.py
+
+Step 2: python -m streamlit run dashboard_app.py
