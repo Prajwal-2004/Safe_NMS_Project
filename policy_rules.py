@@ -1,31 +1,45 @@
-def check_safety(predicted_action, row_data):
+# --- policy_rules.py ---
+
+def check_safety(predicted_id, metrics):
     """
-    Inputs:
-        predicted_action (int): 0=None, 1=Reroute, 2=Restart, 3=ScaleUp
-        row_data (dict): The current metrics (Users, Latency, etc.)
-    Returns:
-        final_action (str): The action we actually take
-        reason (str): Explanation for the human operator
+    Checks the AI's predicted action against hard-coded safety rules.
+    Returns: (final_action, explanation, decision_source)
     """
     
-    users = row_data['Active_Users']
-    latency = row_data['Latency']
+    # Mapping the AI's numerical prediction to an action
+    action_map = {
+        0: "Do Nothing",
+        1: "Reroute Traffic",
+        2: "Restart Router",
+        3: "Scale Up Capacity"
+    }
     
-    # Map ID to Name
-    action_map = {0: "Do Nothing", 1: "Reroute Traffic", 2: "Restart Router", 3: "Scale Up Resources"}
-    ai_choice = action_map.get(predicted_action, "Unknown")
-
-    # --- GUARDRAIL LOGIC ---
+    predicted_action = action_map.get(predicted_id, "Unknown Action")
     
-    # RULE 1: High User Traffic Safety
-    # If AI wants to "Restart Router" but users > 800, BLOCK IT.
-    if predicted_action == 2 and users > 800:
-        return "Reroute Traffic", f"[GUARDRAIL TRIGGERED] AI wanted '{ai_choice}' but Active Users ({users}) > 800. Unsafe to restart. Fallback to 'Reroute'."
+    # --- SAFETY GUARDRAIL RULES ---
+    
+    # RULE 1: BLOCK high-risk 'Restart Router' action during high user load
+    if predicted_action == "Restart Router" and metrics['Active_Users'] > 800:
+        final_action = "Reroute Traffic" # Safer fallback action
+        explanation = "[GUARDRAIL TRIGGERED] Cannot restart router; Active Users exceed 800. Fallback to safer Reroute."
+        decision_source = "Runbook Override" # Source is the rulebook
+        return final_action, explanation, decision_source
 
-    # RULE 2: Cost Optimization
-    # If AI wants to "Scale Up" (add servers) but Latency is actually fine (<50), BLOCK IT.
-    if predicted_action == 3 and latency < 50:
-        return "Do Nothing", f"[GUARDRAIL TRIGGERED] AI wanted '{ai_choice}' but Latency is low ({latency}ms). Scaling up is waste of money."
+    # RULE 2: BLOCK unnecessary 'Scale Up Capacity' if current latency is low
+    if predicted_action == "Scale Up Capacity" and metrics['Latency'] < 150:
+        final_action = "Do Nothing" # Safest fallback: save resources
+        explanation = "[GUARDRAIL TRIGGERED] Latency is below 150ms; Scale Up is unnecessary. Saving resources."
+        decision_source = "Runbook Override" # Source is the rulebook
+        return final_action, explanation, decision_source
 
-    # If no rules violated, approve the AI's choice
-    return ai_choice, f"AI Decision '{ai_choice}' approved. Safety checks passed."
+    # --- ACTION APPROVED ---
+    # If no rule blocks the action, the AI's decision is approved.
+    if predicted_action != "Do Nothing":
+        explanation = f"[APPROVED] AI recommendation confirmed safe. Latency: {int(metrics['Latency'])}ms."
+        decision_source = "AI + Runbook Confirmation" # Source is both working together
+    else:
+        # If the AI predicts 'Do Nothing', it's always safe
+        explanation = "Network stable, monitoring continues."
+        decision_source = "AI-Driven Monitoring"
+        
+    return predicted_action, explanation, decision_source
