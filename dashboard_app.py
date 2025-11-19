@@ -36,7 +36,8 @@ for index, row in live_df_sim.iterrows():
     prediction_id = clf.predict(current_metrics)[0]
     row_dict = row.to_dict()
     
-    final_action, explanation = check_safety(prediction_id, row_dict)
+    # Capture the new 'decision_source' return value
+    final_action, explanation, decision_source = check_safety(prediction_id, row_dict) 
     
     results_latency.append(row['Latency'])
     log_history.append({
@@ -44,7 +45,8 @@ for index, row in live_df_sim.iterrows():
         'latency': row['Latency'],
         'action': final_action,
         'reason': explanation,
-        'metrics': row_dict
+        'metrics': row_dict,
+        'source': decision_source 
     })
     
     # Simulate 'fixing' the network for the NEXT step's visual data
@@ -64,22 +66,30 @@ minute_to_check = st.slider(
 selected_log = log_history[minute_to_check]
 is_blocked = "[GUARDRAIL TRIGGERED]" in selected_log['reason']
 
-# --- 4. EXPLAINABLE METRICS & DECISION (Updated to show all four metrics) ---
+# --- 4. EXPLAINABLE METRICS & DECISION (Display all four metrics and source) ---
 st.markdown("---")
 st.subheader(f"Decision Inputs and Final Action at T+{minute_to_check} min")
 
-# Use 5 columns: 4 for the input metrics + 1 for the final action status
+# Use 5 columns for the input metrics and action
 col1, col2, col3, col4, col5 = st.columns(5)
 
 # Display all four input metrics
 col1.metric("Latency (ms)", f"{int(selected_log['metrics']['Latency'])}")
 col2.metric("CPU Load (%)", f"{int(selected_log['metrics']['CPU_Load'])}")
-col3.metric("Packet Loss (%)", f"{selected_log['metrics']['Packet_Loss']:.2f}") # Displaying floats for packet loss
+col3.metric("Packet Loss (%)", f"{selected_log['metrics']['Packet_Loss']:.2f}")
 col4.metric("Active Users", f"{int(selected_log['metrics']['Active_Users'])}")
 col5.metric("Action Taken", selected_log['action'])
 
+st.markdown("---") # Separator line
+
+# Display the source of the final decision
+st.metric(
+    label="Decision Source",
+    value=selected_log['source'],
+    delta_color="off"
+)
+
 # Display the safety status and rationale
-st.markdown("---")
 if is_blocked:
     st.markdown("<h3 style='color: red;'>⚠️ Safety Status: Override Applied</h3>", unsafe_allow_html=True)
     st.warning(f"**Safety Rationale:** {selected_log['reason']}")
